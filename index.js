@@ -1,32 +1,18 @@
-const http = require('http');
+const express = require('express');
+const cors = require('cors');
 
-const server = http.createServer((req, res) => {
-  // Handle CORS Preflight (OPTIONS request)
-  if (req.method === 'OPTIONS') {
-    res.writeHead(204, {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type'
-    });
-    res.end();
-    return;
-  }
+const app = express();
 
-  // Handle our GET request for /ping
-  if (req.url === '/ping' && req.method === 'GET') {
-    res.writeHead(200, {
-      'Content-Type': 'application/json',
-      'Access-Control-Allow-Origin': '*'
-    });
-    res.end(JSON.stringify({ message: '✅ CORS fix successful! Hello from the native server!' }));
-  } else {
-    // For any other path, respond with 404 Not Found
-    res.writeHead(404, { 'Content-Type': 'text/plain' });
-    res.end('Not Found');
-  }
+// Use CORS to allow requests from any origin
+app.use(cors());
+
+// Our simple test endpoint
+app.get('/ping', (req, res) => {
+  console.log('Received a ping request!');
+  res.json({ message: '✅ Hello from the Express.js server!' });
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`Native Node.js server listening on port ${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Express server listening on port ${PORT}`);
 });

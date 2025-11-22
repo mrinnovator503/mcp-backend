@@ -1,10 +1,14 @@
 {
-  "name": "mcp-backend-native",
+  "name": "mcp-backend",
   "version": "1.0.0",
-  "description": "Simple Native Node.js Server for Debugging",
+  "description": "Simple MCP Backend Server for the Gemini Control Panel",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "cors": "^2.8.5"
   },
   "engines": {
     "node": "16.x"
