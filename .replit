@@ -1,0 +1,15 @@
+# The command to run your app
+run = ["node", "index.js"]
+
+# Specifies which languages are used
+language = "nodejs"
+
+# The entrypoint file
+entrypoint = "index.js"
+
+[deployment]
+# The command to run on deployment
+run = ["node", "index.js"]
+
+# Whether to guess the main file
+guess_main = false
