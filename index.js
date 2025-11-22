@@ -3,10 +3,8 @@ const cors = require('cors'); // To handle requests from other domains
 
 const app = express();
 
-// Use CORS to allow requests ONLY from your GitHub Pages site
-app.use(cors({
-  origin: 'https://mrinnovator503.github.io'
-}));
+// Use CORS to allow requests from any origin (for debugging)
+app.use(cors());
 
 // Our simple test endpoint
 app.get('/ping', (req, res) => {
