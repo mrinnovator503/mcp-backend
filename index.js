@@ -270,13 +270,22 @@ app.post('/log-expense-image', upload.single('expenseImage'), async (req, res) =
 
     console.log('OCR Result:', text);
 
-    // Basic parsing logic to find amount (can be improved later)
-    // Looks for patterns like ₹1,234.56 or Rs 500 etc.
-    const amountMatch = text.match(/(?:₹|Rs\.?)\s*([\d,]+\.?\d*)/);
-    const amount = amountMatch ? parseFloat(amountMatch[1].replace(/,/g, '')) : null;
+    // Smarter parsing logic
+    const numbers = (text.match(/[\d,]+\.?\d*/g) || [])
+      .map(s => s.replace(/,/g, '')) // Remove commas
+      .filter(s => s.length > 0 && s.length < 12) // Filter out empty strings and very long numbers (like IDs)
+      .map(s => parseFloat(s))
+      .filter(n => !isNaN(n) && n > 0); // Filter out non-numbers and zeros
 
+    if (numbers.length === 0) {
+      throw new Error('No valid numbers found in the image text.');
+    }
+
+    // Assume the largest number found is the amount
+    const amount = Math.max(...numbers);
+    
     if (!amount) {
-      throw new Error('Could not automatically detect expense amount from image.');
+      throw new Error('Could not automatically detect a valid expense amount from image.');
     }
 
     // Now, log it to Google Sheets
