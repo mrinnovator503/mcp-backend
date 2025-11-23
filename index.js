@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
-const axios = require('axios'); // Import axios
+const axios = require('axios');
+const chrono = require('chrono-node'); // Import chrono-node
 
 const app = express();
 
@@ -16,7 +17,7 @@ app.get('/ping', (req, res) => {
   res.json({ message: '✅ Hello from the Express.js server!' });
 });
 
-// New endpoint to add a task to Todoist
+// Updated endpoint to add a task to Todoist with NLP
 app.post('/add-task', async (req, res) => {
   const { taskContent } = req.body;
 
@@ -31,10 +32,30 @@ app.post('/add-task', async (req, res) => {
     return res.status(500).json({ error: 'Server configuration error: Todoist API token missing.' });
   }
 
+  // Use chrono-node to parse the date
+  const parsedResult = chrono.parse(taskContent);
+
+  let finalContent = taskContent;
+  let dueString = null;
+
+  if (parsedResult.length > 0) {
+    const parsedDateText = parsedResult[0].text;
+    dueString = parsedDateText;
+    finalContent = taskContent.replace(parsedDateText, '').trim();
+  }
+  
+  const payload = {
+    content: finalContent,
+  };
+
+  if (dueString) {
+    payload.due_string = dueString;
+  }
+
   try {
     const todoistRes = await axios.post(
       'https://api.todoist.com/rest/v2/tasks',
-      { content: taskContent },
+      payload,
       {
         headers: {
           Authorization: `Bearer ${TODOIST_API_TOKEN}`,
