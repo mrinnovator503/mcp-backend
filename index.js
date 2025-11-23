@@ -125,6 +125,33 @@ app.post('/sync-tasks', async (req, res) => {
   }
 });
 
+// POST /complete-task
+app.post('/complete-task', async (req, res) => {
+  const { taskId } = req.body;
+  if (!taskId) {
+    return res.status(400).json({ error: 'Task ID is required.' });
+  }
+
+  const TODOIST_API_TOKEN = process.env.TODOIST_API_TOKEN;
+  if (!TODOIST_API_TOKEN) {
+    console.error('TODOIST_API_TOKEN is not set in environment variables.');
+    return res.status(500).json({ error: 'Server configuration error: Todoist API token missing.' });
+  }
+
+  const url = `https://api.todoist.com/rest/v2/tasks/${taskId}/close`;
+
+  try {
+    await axios.post(url, null, { // No body needed for this request
+      headers: { Authorization: `Bearer ${TODOIST_API_TOKEN}` },
+    });
+    console.log(`Task ${taskId} completed in Todoist.`);
+    res.status(200).json({ message: 'Task completed successfully!' });
+  } catch (error) {
+    console.error(`Error completing task ${taskId} in Todoist:`, error.response ? error.response.data : error.message);
+    res.status(500).json({ error: 'Failed to complete task.', details: error.response ? error.response.data : error.message });
+  }
+});
+
 
 // --- SERVER LISTENER ---
 
