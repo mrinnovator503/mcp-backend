@@ -58,7 +58,7 @@ app.post('/add-task', async (req, res) => {
   }
 });
 
-// POST /sync-tasks
+// POST /sync-tasks (now organizes by project)
 app.post('/sync-tasks', async (req, res) => {
   const TODOIST_API_TOKEN = process.env.TODOIST_API_TOKEN;
   if (!TODOIST_API_TOKEN) {
@@ -67,30 +67,55 @@ app.post('/sync-tasks', async (req, res) => {
   }
 
   try {
-    // 1. Fetch all active tasks from Todoist
-    const todoistRes = await axios.get('https://api.todoist.com/rest/v2/tasks', {
+    // 1. Create API client instance
+    const apiClient = axios.create({
+      baseURL: 'https://api.todoist.com/rest/v2',
       headers: { Authorization: `Bearer ${TODOIST_API_TOKEN}` },
     });
-    const tasks = todoistRes.data;
 
-    // 2. Format tasks into a markdown string
-    let markdownContent = '# My Tasks\n\n';
-    if (tasks.length === 0) {
-      markdownContent += 'No active tasks.';
-    } else {
-      tasks.sort((a, b) => a.order - b.order).forEach(task => {
-        let taskLine = `- [ ] ${task.content}`;
-        if (task.due) {
-          taskLine += ` (Due: ${task.due.string})`;
-        }
-        markdownContent += taskLine + '\n';
-      });
-    }
+    // 2. Fetch all projects and tasks in parallel
+    const [projectsRes, tasksRes] = await Promise.all([
+      apiClient.get('/projects'),
+      apiClient.get('/tasks'),
+    ]);
+    const projects = projectsRes.data;
+    const tasks = tasksRes.data;
 
-    // 3. Return the markdown content in the response
-    console.log(`Successfully formatted ${tasks.length} tasks.`);
+    // 3. Group tasks by project_id
+    const tasksByProject = new Map();
+    tasks.forEach(task => {
+      if (!tasksByProject.has(task.project_id)) {
+        tasksByProject.set(task.project_id, []);
+      }
+      tasksByProject.get(task.project_id).push(task);
+    });
+
+    // 4. Sort projects by their order
+    projects.sort((a,b) => a.order - b.order);
+
+    // 5. Format tasks into a markdown string, organized by project
+    let markdownContent = '# My Tasks (Synced)\n\n';
+    projects.forEach(project => {
+      markdownContent += `## ${project.name}\n\n`;
+      const projectTasks = tasksByProject.get(project.id) || [];
+      if (projectTasks.length === 0) {
+        markdownContent += 'No tasks in this project.\n\n';
+      } else {
+        projectTasks.sort((a,b) => a.order - b.order).forEach(task => {
+          let taskLine = `- [ ] ${task.content}`;
+          if (task.due) {
+            taskLine += ` (Due: ${task.due.string})`;
+          }
+          markdownContent += taskLine + '\n';
+        });
+        markdownContent += '\n';
+      }
+    });
+
+    // 6. Return the markdown content in the response
+    console.log(`Successfully formatted ${tasks.length} tasks from ${projects.length} projects.`);
     res.status(200).json({
-      message: `Successfully formatted ${tasks.length} tasks.`,
+      message: `Successfully formatted ${tasks.length} tasks from ${projects.length} projects.`,
       markdown: markdownContent
     });
 
