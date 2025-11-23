@@ -235,7 +235,7 @@ app.post('/log-expense', async (req, res) => {
       ]
     ];
 
-    const range = 'Sheet1!A:F'; // Assuming data starts on Sheet1 and extends to column F
+    const range = "'quinteom Expenses'!A:F"; // Use the correct sheet name provided by the user
 
     await sheets.spreadsheets.values.append({
       spreadsheetId: GOOGLE_SHEET_ID,
