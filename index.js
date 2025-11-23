@@ -200,6 +200,8 @@ app.post('/reopen-task', async (req, res) => {
 
 app.post('/log-expense', async (req, res) => {
 
+  console.log('--- Received request for /log-expense ---'); // Debug log 1
+
   const { item, amount, category, paymentMethod, notes } = req.body;
 
   if (!item || !amount) {
@@ -227,6 +229,8 @@ app.post('/log-expense', async (req, res) => {
 
 
   try {
+
+    console.log('Attempting to initialize Google Sheet client...'); // Debug log 2
 
     const sheets = await getGoogleSheetClient();
 
