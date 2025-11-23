@@ -10,7 +10,8 @@
     "express": "^4.19.2",
     "cors": "^2.8.5",
     "axios": "^1.6.0",
-    "chrono-node": "^2.7.5"
+    "chrono-node": "^2.7.5",
+    "googleapis": "^128.0.0"
   },
   "engines": {
     "node": "16.x"

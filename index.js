@@ -1,7 +1,6 @@
-const express = require('express');
-const cors = require('cors');
 const axios = require('axios');
 const chrono = require('chrono-node');
+const { google } = require('googleapis'); // Add googleapis import
 
 const app = express();
 
@@ -10,6 +9,20 @@ app.use(express.json());
 
 // Use CORS to allow requests from any origin
 app.use(cors());
+
+// --- UTILITY FUNCTIONS FOR GOOGLE SHEETS ---
+async function getGoogleSheetClient() {
+  const credentials = JSON.parse(process.env.GOOGLE_SHEETS_CREDENTIALS);
+  const auth = new google.auth.JWT(
+    credentials.client_email,
+    null,
+    credentials.private_key,
+    ['https://www.googleapis.com/auth/spreadsheets']
+  );
+  await auth.authorize();
+  return google.sheets({ version: 'v4', auth });
+}
+
 
 // --- TASKS ENDPOINTS ---
 
@@ -60,6 +73,8 @@ app.post('/add-task', async (req, res) => {
 
 // POST /sync-tasks (now organizes by project)
 app.post('/sync-tasks', async (req, res) => {
+  // Security check for internal API key - this endpoint is for frontend use without key
+  // We can re-add internal API key for direct curl access later if needed, but not for frontend
   const TODOIST_API_TOKEN = process.env.TODOIST_API_TOKEN;
   if (!TODOIST_API_TOKEN) {
     console.error('TODOIST_API_TOKEN is not set in environment variables.');
@@ -176,6 +191,62 @@ app.post('/reopen-task', async (req, res) => {
   } catch (error) {
     console.error(`Error reopening task ${taskId} in Todoist:`, error.response ? error.response.data : error.message);
     res.status(500).json({ error: 'Failed to re-open task.', details: error.response ? error.response.data : error.message });
+  }
+});
+
+// POST /log-expense (manual entry)
+app.post('/log-expense', async (req, res) => {
+  const { item, amount, category, paymentMethod, notes } = req.body;
+  if (!item || !amount) {
+    return res.status(400).json({ error: 'Item and Amount are required.' });
+  }
+
+  const GOOGLE_SHEET_ID = process.env.GOOGLE_SHEET_ID;
+  const GOOGLE_SHEETS_CREDENTIALS = process.env.GOOGLE_SHEETS_CREDENTIALS;
+
+  if (!GOOGLE_SHEET_ID || !GOOGLE_SHEETS_CREDENTIALS) {
+    console.error('Google Sheets credentials or sheet ID missing.');
+    return res.status(500).json({ error: 'Server configuration error: Google Sheets credentials missing.' });
+  }
+
+  try {
+    const sheets = await getGoogleSheetClient();
+    const now = new Date();
+    const timestamp = now.toLocaleString('en-IN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    }).replace(',', ''); // Format as DD/MM/YYYY HH:MM:SS, remove comma
+
+    const values = [
+      [
+        timestamp,
+        category || '', // Use provided category or empty string
+        item,
+        amount,
+        paymentMethod || '', // Use provided payment method or empty string
+        notes || '' // Use provided notes or empty string
+      ]
+    ];
+
+    const range = 'Sheet1!A:F'; // Assuming data starts on Sheet1 and extends to column F
+
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: GOOGLE_SHEET_ID,
+      range: range,
+      valueInputOption: 'USER_ENTERED',
+      resource: { values: values },
+    });
+
+    console.log('Expense logged to Google Sheet:', values);
+    res.status(200).json({ message: 'Expense logged successfully!' });
+  } catch (error) {
+    console.error('Error logging expense to Google Sheet:', error.message);
+    res.status(500).json({ error: 'Failed to log expense.', details: error.message });
   }
 });
 
