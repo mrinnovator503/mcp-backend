@@ -3,6 +3,8 @@ const cors = require('cors');
 const axios = require('axios');
 const chrono = require('chrono-node');
 const { google } = require('googleapis'); // Add googleapis import
+const multer = require('multer');
+const { createWorker } = require('tesseract.js');
 
 const app = express();
 
@@ -249,6 +251,58 @@ app.post('/log-expense', async (req, res) => {
   } catch (error) {
     console.error('Error logging expense to Google Sheet:', error.message);
     res.status(500).json({ error: 'Failed to log expense.', details: error.message });
+  }
+});
+
+// POST /log-expense-image (OCR entry)
+const upload = multer({ storage: multer.memoryStorage() });
+app.post('/log-expense-image', upload.single('expenseImage'), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'No image file uploaded.' });
+  }
+
+  console.log('Received image for OCR processing...');
+
+  try {
+    const worker = await createWorker('eng');
+    const { data: { text } } = await worker.recognize(req.file.buffer);
+    await worker.terminate();
+
+    console.log('OCR Result:', text);
+
+    // Basic parsing logic to find amount (can be improved later)
+    // Looks for patterns like ₹1,234.56 or Rs 500 etc.
+    const amountMatch = text.match(/(?:₹|Rs\.?)\s*([\d,]+\.?\d*)/);
+    const amount = amountMatch ? parseFloat(amountMatch[1].replace(/,/g, '')) : null;
+
+    if (!amount) {
+      throw new Error('Could not automatically detect expense amount from image.');
+    }
+
+    // Now, log it to Google Sheets
+    const sheets = await getGoogleSheetClient();
+    const now = new Date();
+    const timestamp = now.toLocaleString('en-IN', {
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+    }).replace(',', '');
+
+    const values = [[timestamp, 'Auto-detect', 'Auto-detected from Image', amount, 'UPI', 'OCR Scan']];
+    const range = 'A:F';
+
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: process.env.GOOGLE_SHEET_ID,
+      range: range,
+      valueInputOption: 'USER_ENTERED',
+      resource: { values: values },
+    });
+
+    console.log('OCR expense logged to Google Sheet:', values);
+    res.status(200).json({ message: 'Expense successfully logged via OCR!', detectedAmount: amount });
+
+  } catch (error) {
+    console.error('Error during OCR processing or logging:', error.message);
+    res.status(500).json({ error: 'Failed to process image and log expense.', details: error.message });
   }
 });
 
