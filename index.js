@@ -58,8 +58,14 @@ app.post('/add-task', async (req, res) => {
   }
 });
 
-// POST /sync-tasks (now organizes by project)
+// POST /sync-tasks (now organizes by project and is secured)
 app.post('/sync-tasks', async (req, res) => {
+  // Security check for internal API key
+  const internalApiKey = req.header('x-internal-api-key');
+  if (!internalApiKey || internalApiKey !== process.env.INTERNAL_API_KEY) {
+    return res.status(401).json({ error: 'Unauthorized: Missing or invalid internal API key.' });
+  }
+
   const TODOIST_API_TOKEN = process.env.TODOIST_API_TOKEN;
   if (!TODOIST_API_TOKEN) {
     console.error('TODOIST_API_TOKEN is not set in environment variables.');
