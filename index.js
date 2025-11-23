@@ -310,109 +310,215 @@ app.post('/log-expense', async (req, res) => {
 
 // POST /parse-expense-text
 
+
+
 app.post('/parse-expense-text', (req, res) => {
+
+
 
     const { transactionText } = req.body;
 
+
+
     if (!transactionText) {
+
+
 
         return res.status(400).json({ error: 'Transaction text is required.' });
 
+
+
     }
+
+
+
+
 
 
 
     let amount = null;
 
+
+
     let item = 'Parsed from text';
 
-    
 
-    // --- Amount Parsing Logic (Multi-pass) ---
 
-    // Pass 1: Look for an explicit amount with a currency symbol.
-
-    const currencyMatch = transactionText.match(/(?:₹|Rs\.?)\s*([\d,]+\.?\d*)/);
-
-    if (currencyMatch) {
-
-        amount = parseFloat(currencyMatch[1].replace(/,/g, ''));
-
-    } else {
-
-        // Pass 2: If no currency symbol, find all numbers and apply stricter filtering.
-
-        const numbers = (transactionText.match(/[\d,]+\.?\d*/g) || [])
-
-            .map(s => s.replace(/,/g, '')) // Remove commas
-
-            // Exclude numbers that are likely phone numbers (9-10 digits), long IDs (>11), or 4-digit years.
-
-            .filter(s => s.length > 0 && s.length < 9 && !/^(19|20)\d{2}$/.test(s)) 
-
-            .map(s => parseFloat(s))
-
-            .filter(n => !isNaN(n) && n > 0); // Filter out non-numbers and zeros
+    const lines = transactionText.split('\n').map(line => line.trim()).filter(Boolean);
 
 
 
-        if (numbers.length > 0) {
 
-            // Pass 3: Assume the largest remaining number is the amount.
-
-            amount = Math.max(...numbers);
-
-        }
-
-    }
 
 
 
     // --- Item Parsing Logic ---
 
-    const recipientMatch = transactionText.match(/To:\s*([A-Z\s]+(?:\s[A-Z\s]+)*)/i);
 
-    if (recipientMatch && recipientMatch[1]) {
 
-        item = recipientMatch[1].trim();
+    // Look for a line that starts with "To " or "To: "
 
-    } else {
 
-        // Fallback for item if "To:" isn't found, maybe grab the first significant line
 
-        const lines = transactionText.split('\n').map(line => line.trim()).filter(line => line.length > 5 && !line.match(/^(?:UPI|Google Pay|PhonePe|From:|Transaction ID)/i));
+    const toLine = lines.find(line => line.toLowerCase().startsWith('to '));
 
-        if (lines.length > 0) {
 
-            item = lines[0]; // Take the first meaningful line as item
+
+    if (toLine) {
+
+
+
+        // Remove "To " or "To: " from the start and use that as the item
+
+
+
+        item = toLine.replace(/^(to:?)\s*/i, '').trim();
+
+
+
+    } else if (lines.length > 0) {
+
+
+
+        // Fallback: Assume the very first line is the recipient
+
+
+
+        item = lines[0];
+
+
+
+    }
+
+
+
+    
+
+
+
+    // --- Amount Parsing Logic (Multi-pass) ---
+
+
+
+    // Pass 1: Look for a number that is on a line by itself. This is a very strong signal.
+
+
+
+    for (const line of lines) {
+
+
+
+        if (/^[\d,]+\.?\d*$/.test(line)) {
+
+
+
+            const potentialAmount = parseFloat(line.replace(/,/g, ''));
+
+
+
+            if (!isNaN(potentialAmount) && potentialAmount > 0) {
+
+
+
+                amount = potentialAmount;
+
+
+
+                break; // Found it, stop.
+
+
+
+            }
+
+
 
         }
 
+
+
     }
+
+
+
+
+
+
+
+    // Pass 2: If no standalone number line was found, use the old currency symbol logic.
+
+
+
+    if (amount === null) {
+
+
+
+        const currencyMatch = transactionText.match(/(?:₹|Rs\.?)\s*([\d,]+\.?\d*)/);
+
+
+
+        if (currencyMatch) {
+
+
+
+            amount = parseFloat(currencyMatch[1].replace(/,/g, ''));
+
+
+
+        }
+
+
+
+    }
+
+
+
+
 
 
 
     if (!amount) {
 
-      return res.status(400).json({ error: 'Could not automatically detect a plausible expense amount from text.' });
+
+
+        return res.status(400).json({ error: 'Could not automatically detect a plausible expense amount from the text.' });
+
+
 
     }
 
 
 
+
+
+
+
     res.status(200).json({
+
+
 
         message: 'Text parsed successfully!',
 
+
+
         parsedData: {
+
+
 
             item: item,
 
+
+
             amount: amount
+
+
 
         }
 
+
+
     });
+
+
 
 });
 
