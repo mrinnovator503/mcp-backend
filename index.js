@@ -235,7 +235,7 @@ app.post('/log-expense', async (req, res) => {
       ]
     ];
 
-    const range = "'quinteom Expenses'!A:F"; // Use the correct sheet name provided by the user
+    const range = 'A:F'; // Let the API default to the first visible sheet
 
     await sheets.spreadsheets.values.append({
       spreadsheetId: GOOGLE_SHEET_ID,
