@@ -3,8 +3,6 @@ const cors = require('cors');
 const axios = require('axios');
 const chrono = require('chrono-node');
 const { google } = require('googleapis'); // Add googleapis import
-const multer = require('multer');
-const { createWorker } = require('tesseract.js');
 
 const app = express();
 
@@ -199,129 +197,227 @@ app.post('/reopen-task', async (req, res) => {
 });
 
 // POST /log-expense (manual entry)
+
 app.post('/log-expense', async (req, res) => {
+
   const { item, amount, category, paymentMethod, notes } = req.body;
+
   if (!item || !amount) {
+
     return res.status(400).json({ error: 'Item and Amount are required.' });
+
   }
+
+
 
   const GOOGLE_SHEET_ID = process.env.GOOGLE_SHEET_ID;
+
   const GOOGLE_SHEETS_CREDENTIALS = process.env.GOOGLE_SHEETS_CREDENTIALS;
 
+
+
   if (!GOOGLE_SHEET_ID || !GOOGLE_SHEETS_CREDENTIALS) {
+
     console.error('Google Sheets credentials or sheet ID missing.');
+
     return res.status(500).json({ error: 'Server configuration error: Google Sheets credentials missing.' });
+
   }
 
+
+
   try {
+
     const sheets = await getGoogleSheetClient();
+
     const now = new Date();
+
     const timestamp = now.toLocaleString('en-IN', {
+
       year: 'numeric',
+
       month: '2-digit',
+
       day: '2-digit',
+
       hour: '2-digit',
+
       minute: '2-digit',
+
       second: '2-digit',
+
       hour12: false
+
     }).replace(',', ''); // Format as DD/MM/YYYY HH:MM:SS, remove comma
 
+
+
     const values = [
+
       [
+
         timestamp,
+
         category || '', // Use provided category or empty string
+
         item,
+
         amount,
+
         paymentMethod || '', // Use provided payment method or empty string
+
         notes || '' // Use provided notes or empty string
+
       ]
+
     ];
+
+
 
     const range = 'A:F'; // Let the API default to the first visible sheet
 
+
+
     await sheets.spreadsheets.values.append({
+
       spreadsheetId: GOOGLE_SHEET_ID,
+
       range: range,
+
       valueInputOption: 'USER_ENTERED',
+
       resource: { values: values },
+
     });
+
+
 
     console.log('Expense logged to Google Sheet:', values);
+
     res.status(200).json({ message: 'Expense logged successfully!' });
+
   } catch (error) {
+
     console.error('Error logging expense to Google Sheet:', error.message);
+
     res.status(500).json({ error: 'Failed to log expense.', details: error.message });
+
   }
+
 });
 
-// POST /log-expense-image (OCR entry)
-const upload = multer({ storage: multer.memoryStorage() });
-app.post('/log-expense-image', upload.single('expenseImage'), async (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: 'No image file uploaded.' });
-  }
 
-  console.log('Received image for OCR processing...');
 
-  try {
-    const worker = await createWorker('eng');
-    const { data: { text } } = await worker.recognize(req.file.buffer);
-    await worker.terminate();
+// POST /parse-expense-text
 
-    console.log('OCR Result:', text);
+app.post('/parse-expense-text', (req, res) => {
 
-    // Multi-pass parsing logic for amount
+    const { transactionText } = req.body;
+
+    if (!transactionText) {
+
+        return res.status(400).json({ error: 'Transaction text is required.' });
+
+    }
+
+
+
     let amount = null;
 
-    // Pass 1: Look for an explicit amount with a currency symbol. This is the most reliable.
-    const currencyMatch = text.match(/(?:₹|Rs\.?)\s*([\d,]+\.?\d*)/);
+    let item = 'Parsed from text';
+
+    
+
+    // --- Amount Parsing Logic (Multi-pass) ---
+
+    // Pass 1: Look for an explicit amount with a currency symbol.
+
+    const currencyMatch = transactionText.match(/(?:₹|Rs\.?)\s*([\d,]+\.?\d*)/);
+
     if (currencyMatch) {
+
         amount = parseFloat(currencyMatch[1].replace(/,/g, ''));
+
     } else {
+
         // Pass 2: If no currency symbol, find all numbers and apply stricter filtering.
-        const numbers = (text.match(/[\d,]+\.?\d*/g) || [])
+
+        const numbers = (transactionText.match(/[\d,]+\.?\d*/g) || [])
+
             .map(s => s.replace(/,/g, '')) // Remove commas
+
             // Exclude numbers that are likely phone numbers (9-10 digits), long IDs (>11), or 4-digit years.
+
             .filter(s => s.length > 0 && s.length < 9 && !/^(19|20)\d{2}$/.test(s)) 
+
             .map(s => parseFloat(s))
-            .filter(n => !isNaN(n) && n > 0);
+
+            .filter(n => !isNaN(n) && n > 0); // Filter out non-numbers and zeros
+
+
 
         if (numbers.length > 0) {
+
             // Pass 3: Assume the largest remaining number is the amount.
+
             amount = Math.max(...numbers);
+
         }
+
     }
+
+
+
+    // --- Item Parsing Logic ---
+
+    const recipientMatch = transactionText.match(/To:\s*([A-Z\s]+(?:\s[A-Z\s]+)*)/i);
+
+    if (recipientMatch && recipientMatch[1]) {
+
+        item = recipientMatch[1].trim();
+
+    } else {
+
+        // Fallback for item if "To:" isn't found, maybe grab the first significant line
+
+        const lines = transactionText.split('\n').map(line => line.trim()).filter(line => line.length > 5 && !line.match(/^(?:UPI|Google Pay|PhonePe|From:|Transaction ID)/i));
+
+        if (lines.length > 0) {
+
+            item = lines[0]; // Take the first meaningful line as item
+
+        }
+
+    }
+
+
 
     if (!amount) {
-      throw new Error('Could not automatically detect a plausible expense amount from image.');
+
+      return res.status(400).json({ error: 'Could not automatically detect a plausible expense amount from text.' });
+
     }
 
-    // Now, log it to Google Sheets
-    const sheets = await getGoogleSheetClient();
-    const now = new Date();
-    const timestamp = now.toLocaleString('en-IN', {
-      year: 'numeric', month: '2-digit', day: '2-digit',
-      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
-    }).replace(',', '');
 
-    const values = [[timestamp, 'Auto-detect', 'Auto-detected from Image', amount, 'UPI', 'OCR Scan']];
-    const range = 'A:F';
 
-    await sheets.spreadsheets.values.append({
-      spreadsheetId: process.env.GOOGLE_SHEET_ID,
-      range: range,
-      valueInputOption: 'USER_ENTERED',
-      resource: { values: values },
+    res.status(200).json({
+
+        message: 'Text parsed successfully!',
+
+        parsedData: {
+
+            item: item,
+
+            amount: amount
+
+        }
+
     });
 
-    console.log('OCR expense logged to Google Sheet:', values);
-    res.status(200).json({ message: 'Expense successfully logged via OCR!', detectedAmount: amount });
-
-  } catch (error) {
-    console.error('Error during OCR processing or logging:', error.message);
-    res.status(500).json({ error: 'Failed to process image and log expense.', details: error.message });
-  }
 });
+
+
+
 
 
 // --- SERVER LISTENER ---
