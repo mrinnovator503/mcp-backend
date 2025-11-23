@@ -270,22 +270,30 @@ app.post('/log-expense-image', upload.single('expenseImage'), async (req, res) =
 
     console.log('OCR Result:', text);
 
-    // Smarter parsing logic
-    const numbers = (text.match(/[\d,]+\.?\d*/g) || [])
-      .map(s => s.replace(/,/g, '')) // Remove commas
-      .filter(s => s.length > 0 && s.length < 12) // Filter out empty strings and very long numbers (like IDs)
-      .map(s => parseFloat(s))
-      .filter(n => !isNaN(n) && n > 0); // Filter out non-numbers and zeros
+    // Multi-pass parsing logic for amount
+    let amount = null;
 
-    if (numbers.length === 0) {
-      throw new Error('No valid numbers found in the image text.');
+    // Pass 1: Look for an explicit amount with a currency symbol. This is the most reliable.
+    const currencyMatch = text.match(/(?:₹|Rs\.?)\s*([\d,]+\.?\d*)/);
+    if (currencyMatch) {
+        amount = parseFloat(currencyMatch[1].replace(/,/g, ''));
+    } else {
+        // Pass 2: If no currency symbol, find all numbers and apply stricter filtering.
+        const numbers = (text.match(/[\d,]+\.?\d*/g) || [])
+            .map(s => s.replace(/,/g, '')) // Remove commas
+            // Exclude numbers that are likely phone numbers (9-10 digits), long IDs (>11), or 4-digit years.
+            .filter(s => s.length > 0 && s.length < 9 && !/^(19|20)\d{2}$/.test(s)) 
+            .map(s => parseFloat(s))
+            .filter(n => !isNaN(n) && n > 0);
+
+        if (numbers.length > 0) {
+            // Pass 3: Assume the largest remaining number is the amount.
+            amount = Math.max(...numbers);
+        }
     }
 
-    // Assume the largest number found is the amount
-    const amount = Math.max(...numbers);
-    
     if (!amount) {
-      throw new Error('Could not automatically detect a valid expense amount from image.');
+      throw new Error('Could not automatically detect a plausible expense amount from image.');
     }
 
     // Now, log it to Google Sheets
