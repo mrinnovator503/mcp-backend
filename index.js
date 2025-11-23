@@ -79,13 +79,13 @@ app.post('/sync-tasks', async (req, res) => {
       headers: { Authorization: `Bearer ${TODOIST_API_TOKEN}` },
     });
 
-    // 2. Fetch all projects and tasks in parallel
+    // 2. Fetch all projects and tasks, then filter out completed tasks
     const [projectsRes, tasksRes] = await Promise.all([
       apiClient.get('/projects'),
       apiClient.get('/tasks'),
     ]);
     const projects = projectsRes.data;
-    const tasks = tasksRes.data;
+    const tasks = tasksRes.data.filter(task => !task.is_completed); // Filter out completed tasks
 
     // 3. Group tasks by project_id
     const tasksByProject = new Map();
