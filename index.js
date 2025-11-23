@@ -93,30 +93,30 @@ app.post('/sync-tasks', async (req, res) => {
     // 4. Sort projects by their order
     projects.sort((a,b) => a.order - b.order);
 
-    // 5. Format tasks into a markdown string, organized by project
-    let markdownContent = '# My Tasks (Synced)\n\n';
-    projects.forEach(project => {
-      markdownContent += `## ${project.name}\n\n`;
-      const projectTasks = tasksByProject.get(project.id) || [];
-      if (projectTasks.length === 0) {
-        markdownContent += 'No tasks in this project.\n\n';
-      } else {
-        projectTasks.sort((a,b) => a.order - b.order).forEach(task => {
-          let taskLine = `- [ ] ${task.content}`;
-          if (task.due) {
-            taskLine += ` (Due: ${task.due.string})`;
-          }
-          markdownContent += taskLine + '\n';
-        });
-        markdownContent += '\n';
-      }
+    // 5. Return the structured task data grouped by project
+    console.log(`Successfully fetched ${tasks.length} tasks from ${projects.length} projects.`);
+    
+    // Create a simplified structure for the frontend
+    const projectData = projects.map(project => {
+      const projectTasks = (tasksByProject.get(project.id) || [])
+        .sort((a,b) => a.order - b.order)
+        .map(task => ({
+          id: task.id,
+          content: task.content,
+          is_completed: task.is_completed,
+          due: task.due ? task.due.string : null,
+          project_id: task.project_id
+        }));
+      return {
+        id: project.id,
+        name: project.name,
+        tasks: projectTasks
+      };
     });
 
-    // 6. Return the markdown content in the response
-    console.log(`Successfully formatted ${tasks.length} tasks from ${projects.length} projects.`);
     res.status(200).json({
-      message: `Successfully formatted ${tasks.length} tasks from ${projects.length} projects.`,
-      markdown: markdownContent
+      message: `Successfully fetched ${tasks.length} tasks from ${projects.length} projects.`,
+      data: projectData // Return structured project and task data
     });
 
   } catch (error) {
